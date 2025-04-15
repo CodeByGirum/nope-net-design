@@ -3,21 +3,16 @@ import { useState } from "react"
 import type React from "react"
 
 import { Button } from "@/components/ui/button"
-import { Crosshair, FileText, Upload, AlertTriangle, Wand2 } from "lucide-react"
+import { Crosshair, FileText, Upload } from "lucide-react"
 import { motion } from "framer-motion"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Card, CardContent } from "@/components/ui/card"
+import { useDetection } from "@/context/detection-context"
+import { processKddData } from "@/utils/process-data"
 
 export default function HeroSection({ onDetectionComplete }: { onDetectionComplete: () => void }) {
+  const { setDetectionData } = useDetection()
   const [inputText, setInputText] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [isValidationError, setIsValidationError] = useState(false)
@@ -26,12 +21,32 @@ export default function HeroSection({ onDetectionComplete }: { onDetectionComple
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0])
+
+      // Read file content
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setInputText(event.target.result as string)
+        }
+      }
+      reader.readAsText(e.target.files[0])
     }
   }
 
   const handleDetect = () => {
-    // Simulate validation error for demo purposes
-    if (Math.random() > 0.5) {
+    // Basic validation - check if there's any input
+    if (!inputText.trim()) {
+      setIsValidationError(true)
+      return
+    }
+
+    // Check for KDD format (comma-separated values with enough fields)
+    const lines = inputText.trim().split("\n")
+    const firstLine = lines[0]
+    const fields = firstLine.split(",")
+
+    // KDD format should have at least 41 fields
+    if (fields.length < 41) {
       setIsValidationError(true)
       return
     }
@@ -39,16 +54,35 @@ export default function HeroSection({ onDetectionComplete }: { onDetectionComple
     // Start processing animation
     setIsProcessing(true)
 
-    // Simulate processing delay
+    // Process the data
     setTimeout(() => {
-      setIsProcessing(false)
-      onDetectionComplete()
-    }, 3000)
+      try {
+        const { results, totalPackets, attacksDetected, processingTime } = processKddData(inputText)
+
+        // Store the results in context
+        setDetectionData({
+          inputText,
+          totalPackets,
+          attacksDetected,
+          processingTime,
+          results,
+        })
+
+        setIsProcessing(false)
+        onDetectionComplete()
+      } catch (error) {
+        console.error("Error processing data:", error)
+        setIsValidationError(true)
+        setIsProcessing(false)
+      }
+    }, 3000) // Simulate processing delay
   }
 
   const handleFixWithAI = () => {
     setIsValidationError(false)
     // Simulate AI fixing the format
+    const sampleData = `0,tcp,http,SF,215,45076,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0,0,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal`
+    setInputText(sampleData)
   }
 
   return (
@@ -77,8 +111,7 @@ export default function HeroSection({ onDetectionComplete }: { onDetectionComple
           transition={{ duration: 0.8, delay: 0.2 }}
           className="text-4xl sm:text-5xl md:text-6xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-white to-blue-400"
         >
-          Welcome to NopeNet
-          <span className="block text-blue-400">Intrusion Detection, Reinvented.</span>
+          Hi! You're now on NopeNet.
         </motion.h1>
 
         <motion.p
@@ -233,54 +266,107 @@ export default function HeroSection({ onDetectionComplete }: { onDetectionComple
                       // Sample KDD data format
                       const sampleData = `0,tcp,http,SF,215,45076,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,0,0,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
 0,udp,private,SF,105,146,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,255,254,1.00,0.01,0.00,0.00,0.00,0.00,0.00,0.00,normal
-0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune`
-                      setInputText(sampleData)
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,212,1940,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,328,2234,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,190,11170,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,336,2295,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,239,486,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,334,1540,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,292,2478,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,214,1825,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,214,4049,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,123,6,0.05,0.07,0.00,0.00,0.00,0.00,0.00,0.00,neptune
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,icmp,eco_i,SF,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,2,2,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,3,3,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,4,4,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,5,5,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,6,6,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,7,7,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,8,8,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,9,9,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,private,REJ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,10,10,1.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,portsweep
+0,tcp,ftp,SF,334,1540,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,guess_passwd
+0,tcp,ftp,SF,334,1540,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,guess_passwd
+0,tcp,ftp,SF,334,1540,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,guess_passwd
+0,tcp,ftp,SF,334,1540,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,guess_passwd
+0,tcp,ftp,SF,334,1540,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,guess_passwd
+0,tcp,ftp,SF,334,1540,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,guess_passwd
+0,tcp,ftp,SF,334,1540,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,guess_passwd
+0,tcp,telnet,SF,239,486,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,buffer_overflow
+0,tcp,telnet,SF,239,486,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,buffer_overflow
+0,tcp,telnet,SF,239,486,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,buffer_overflow
+0,tcp,telnet,SF,239,486,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,buffer_overflow
+0,tcp,telnet,SF,239,486,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,buffer_overflow
+0,icmp,eco_i,SF,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,icmp,eco_i,SF,1032,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,pod
+0,icmp,eco_i,SF,1032,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,pod
+0,icmp,eco_i,SF,1032,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,pod
+0,icmp,eco_i,SF,1032,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,pod
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,http,SF,217,2032,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,udp,domain,SF,43,42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,normal
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+0,tcp,private,S0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0.00,0.00,0.00,0.00,1.00,0.00,0.00,1,1,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,satan
+`
                     }}
-                    className="text-blue-400 border-blue-800 hover:bg-blue-950/30"
                   >
-                    Try Sample Data
+                    Load Sample Data
                   </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleDetect}
-                    className="bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_10px_rgba(59,130,246,0.5)]"
-                  >
-                    Detect
+                  <Button size="sm" onClick={handleDetect} disabled={isProcessing}>
+                    {isProcessing ? "Detecting..." : "Detect"}
                   </Button>
                 </div>
+
+                {isValidationError && (
+                  <div className="mt-4 text-red-500 text-sm">
+                    Invalid input format. Please provide KDD-formatted data with at least 41 fields per line, or try the
+                    &nbsp;
+                    <Button variant="link" onClick={handleFixWithAI} className="text-red-500">
+                      AI Fix
+                    </Button>
+                    &nbsp; option.
+                  </div>
+                )}
               </CardContent>
             </Card>
           </motion.div>
         )}
       </div>
-
-      <Dialog open={isValidationError} onOpenChange={setIsValidationError}>
-        <DialogContent className="bg-gray-900 border border-gray-700 text-white rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center text-xl">
-              <AlertTriangle className="text-yellow-500 mr-2 h-5 w-5" />
-              Formatting Error
-            </DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Your input doesn't follow the expected KDD format.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="bg-black/50 border border-gray-800 rounded-md p-4 my-4">
-            <p className="text-gray-500 text-sm font-mono">
-              Expected format: <span className="text-gray-300">duration,protocol_type,service,flag,src_bytes,...</span>
-            </p>
-          </div>
-          <DialogFooter className="flex sm:justify-between gap-4">
-            <Button variant="outline" className="border-gray-700 text-gray-300 hover:bg-gray-800">
-              Edit Manually
-            </Button>
-            <Button onClick={handleFixWithAI} className="bg-blue-600 hover:bg-blue-500">
-              <Wand2 className="mr-2 h-4 w-4" />
-              Fix with AI
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
   )
 }

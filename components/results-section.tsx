@@ -1,43 +1,62 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, AlertTriangle, Shield, ShieldAlert, ShieldCheck, MessageSquare } from "lucide-react"
+import {
+  RefreshCw,
+  AlertTriangle,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  MessageSquare,
+  ArrowLeft,
+  Info,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-
-// This would come from your backend in a real implementation
-const mockResults = {
-  summary: {
-    totalPackets: 1254,
-    attacksDetected: 37,
-    processingTime: "2.3s",
-  },
-  attacks: [
-    { id: 1, timestamp: "2023-04-11 08:23:15", protocol: "TCP", flag: "S0", attackType: "DOS", confidence: 0.92 },
-    { id: 2, timestamp: "2023-04-11 08:24:32", protocol: "UDP", flag: "SF", attackType: "Probe", confidence: 0.87 },
-    { id: 3, timestamp: "2023-04-11 08:25:47", protocol: "ICMP", flag: "REJ", attackType: "R2L", confidence: 0.78 },
-    { id: 4, timestamp: "2023-04-11 08:26:03", protocol: "TCP", flag: "S0", attackType: "DOS", confidence: 0.95 },
-    { id: 5, timestamp: "2023-04-11 08:27:19", protocol: "TCP", flag: "S1", attackType: "U2R", confidence: 0.81 },
-  ],
-  recommendations: [
-    { id: 1, attackType: "DOS", recommendation: "Apply firewall rules to block suspicious IPs" },
-    { id: 2, attackType: "Probe", recommendation: "Configure port scan detection and implement port lockdown" },
-    { id: 3, attackType: "R2L", recommendation: "Update authentication mechanisms and review access controls" },
-  ],
-}
+import { useDetection } from "@/context/detection-context"
+import { generateRecommendations } from "@/utils/process-data"
 
 export default function ResultsSection() {
-  // This would be controlled by your app state in a real implementation
-  const [showResults, setShowResults] = useState(true)
-
+  const router = useRouter()
+  const { detectionData } = useDetection()
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [messages, setMessages] = useState([
     { role: "assistant", content: "Hello! I'm your NopeNet Assistant. How can I help you analyze your scan results?" },
   ])
   const [inputMessage, setInputMessage] = useState("")
+  const [viewAllThreats, setViewAllThreats] = useState(false)
+
+  // Generate recommendations based on detection results
+  const recommendations = useMemo(() => {
+    if (!detectionData) return []
+    return generateRecommendations(detectionData.results)
+  }, [detectionData])
+
+  // Calculate attack type distribution
+  const attackDistribution = useMemo(() => {
+    if (!detectionData) return { DOS: 0, Probe: 0, R2L: 0, U2R: 0, total: 0 }
+
+    const distribution = {
+      DOS: 0,
+      Probe: 0,
+      R2L: 0,
+      U2R: 0,
+      total: 0,
+    }
+
+    detectionData.results.forEach((result) => {
+      if (result.attackType !== "normal") {
+        distribution[result.attackType]++
+        distribution.total++
+      }
+    })
+
+    return distribution
+  }, [detectionData])
 
   const handleSendMessage = () => {
     if (!inputMessage.trim()) return
@@ -50,13 +69,11 @@ export default function ResultsSection() {
       let response = ""
 
       if (inputMessage.toLowerCase().includes("dos") || inputMessage.toLowerCase().includes("denial of service")) {
-        response =
-          "DOS (Denial of Service) attacks attempt to make a machine or network resource unavailable. In your scan, we detected 17 DOS attacks with an average confidence of 93%. I recommend implementing rate limiting and traffic filtering."
+        response = `DOS (Denial of Service) attacks attempt to make a machine or network resource unavailable. In your scan, we detected ${attackDistribution.DOS} DOS attacks. I recommend implementing rate limiting and traffic filtering.`
       } else if (inputMessage.toLowerCase().includes("probe") || inputMessage.toLowerCase().includes("scanning")) {
-        response =
-          "Probe attacks involve scanning networks to gather information for later attacks. Your scan shows 9 probe attempts, primarily targeting ports 22 and 80. Consider hiding your service fingerprints and implementing port knocking."
+        response = `Probe attacks involve scanning networks to gather information for later attacks. Your scan shows ${attackDistribution.Probe} probe attempts. Consider hiding your service fingerprints and implementing port knocking.`
       } else if (inputMessage.toLowerCase().includes("summary") || inputMessage.toLowerCase().includes("overview")) {
-        response = `Your scan analyzed ${mockResults.summary.totalPackets} packets and detected ${mockResults.summary.attacksDetected} potential threats across 4 attack categories. The most common attack type was DOS (45%), followed by Probe (25%), R2L (20%), and U2R (10%).`
+        response = `Your scan analyzed ${detectionData?.totalPackets || 0} packets and detected ${detectionData?.attacksDetected || 0} potential threats across ${attackDistribution.total ? "multiple" : "0"} attack categories.`
       } else {
         response =
           "I can provide information about the detected attacks, explain attack types, or suggest security improvements based on your scan results. What specific aspect would you like to know more about?"
@@ -68,20 +85,38 @@ export default function ResultsSection() {
     setInputMessage("")
   }
 
-  if (!showResults) return null
+  if (!detectionData) {
+    return (
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto text-center">
+          <h2 className="text-3xl font-bold mb-4">No Detection Data Available</h2>
+          <p className="text-gray-400 mb-8">Please run a detection first to see results.</p>
+          <Button onClick={() => router.push("/")} className="bg-blue-600 hover:bg-blue-500">
+            Go to Scanner
+          </Button>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="py-20 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-12">
+        <div className="flex items-center justify-between mb-12">
+          <Button
+            variant="ghost"
+            className="text-gray-400 hover:text-white hover:bg-gray-800"
+            onClick={() => router.push("/")}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Scanner
+          </Button>
           <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+            <h2 className="text-3xl sm:text-4xl font-bold">
               Detection <span className="text-blue-400">Results</span>
             </h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">
-              Analysis complete. Here's what we found in your network data.
-            </p>
           </motion.div>
+          <div className="w-[100px]"></div> {/* Spacer for centering */}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -101,28 +136,28 @@ export default function ResultsSection() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Total Packets</span>
-                    <span className="text-white font-mono">{mockResults.summary.totalPackets}</span>
+                    <span className="text-white font-mono">{detectionData.totalPackets}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Attacks Detected</span>
-                    <span className="text-red-400 font-mono">{mockResults.summary.attacksDetected}</span>
+                    <span className="text-red-400 font-mono">{detectionData.attacksDetected}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Processing Time</span>
-                    <span className="text-white font-mono">{mockResults.summary.processingTime}</span>
+                    <span className="text-white font-mono">{detectionData.processingTime}</span>
                   </div>
                   <div className="pt-4">
                     <div className="w-full bg-gray-800 rounded-full h-2.5">
                       <div
                         className="bg-blue-600 h-2.5 rounded-full"
                         style={{
-                          width: `${(mockResults.summary.attacksDetected / mockResults.summary.totalPackets) * 100}%`,
+                          width: `${(detectionData.attacksDetected / detectionData.totalPackets) * 100}%`,
                         }}
                       ></div>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      {((mockResults.summary.attacksDetected / mockResults.summary.totalPackets) * 100).toFixed(2)}% of
-                      packets flagged
+                      {((detectionData.attacksDetected / detectionData.totalPackets) * 100).toFixed(2)}% of packets
+                      flagged
                     </p>
                   </div>
                 </div>
@@ -144,90 +179,128 @@ export default function ResultsSection() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex items-center justify-center p-6">
-                <div className="grid grid-cols-2 gap-8 w-full">
-                  <div className="relative">
-                    <div className="w-full h-48 flex items-center justify-center">
-                      <div className="relative w-40 h-40">
-                        {/* DOS Attack - 45% */}
-                        <div
-                          className="absolute inset-0 rounded-full border-8 border-red-500/80"
-                          style={{ clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 100%, 50% 100%)" }}
-                        ></div>
-                        {/* Probe Attack - 25% */}
-                        <div
-                          className="absolute inset-0 rounded-full border-8 border-yellow-500/80"
-                          style={{ clipPath: "polygon(50% 50%, 50% 0%, 0% 0%, 0% 50%)" }}
-                        ></div>
-                        {/* R2L Attack - 20% */}
-                        <div
-                          className="absolute inset-0 rounded-full border-8 border-blue-500/80"
-                          style={{ clipPath: "polygon(50% 50%, 0% 50%, 0% 100%, 30% 100%)" }}
-                        ></div>
-                        {/* U2R Attack - 10% */}
-                        <div
-                          className="absolute inset-0 rounded-full border-8 border-green-500/80"
-                          style={{ clipPath: "polygon(50% 50%, 30% 100%, 100% 100%)" }}
-                        ></div>
-                        <div className="absolute inset-8 bg-gray-900/80 rounded-full flex items-center justify-center">
-                          <span className="text-white font-bold">37</span>
+                {detectionData.totalPackets <= 1 || attackDistribution.total === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center p-8">
+                    <Info className="h-12 w-12 text-gray-500 mb-4" />
+                    <h3 className="text-xl font-medium text-gray-300 mb-2">Not Enough Information</h3>
+                    <p className="text-gray-500">
+                      We need more packet data to perform a meaningful attack distribution analysis. Try submitting more
+                      network data or using the sample data option.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-8 w-full">
+                    <div className="relative">
+                      <div className="w-full h-48 flex items-center justify-center">
+                        <div className="relative w-40 h-40">
+                          {/* DOS Attack */}
+                          {attackDistribution.DOS > 0 && (
+                            <div
+                              className="absolute inset-0 rounded-full border-8 border-red-500/80"
+                              style={{
+                                clipPath: `polygon(50% 50%, 50% 0%, ${50 + (attackDistribution.DOS / attackDistribution.total) * 50}% 0%, 100% ${(attackDistribution.DOS / attackDistribution.total) * 100}%, 50% 100%)`,
+                              }}
+                            ></div>
+                          )}
+                          {/* Probe Attack */}
+                          {attackDistribution.Probe > 0 && (
+                            <div
+                              className="absolute inset-0 rounded-full border-8 border-yellow-500/80"
+                              style={{
+                                clipPath: `polygon(50% 50%, ${50 - (attackDistribution.Probe / attackDistribution.total) * 50}% 0%, 0% 0%, 0% ${(attackDistribution.Probe / attackDistribution.total) * 100}%)`,
+                              }}
+                            ></div>
+                          )}
+                          {/* R2L Attack */}
+                          {attackDistribution.R2L > 0 && (
+                            <div
+                              className="absolute inset-0 rounded-full border-8 border-blue-500/80"
+                              style={{
+                                clipPath: `polygon(50% 50%, 0% ${100 - (attackDistribution.R2L / attackDistribution.total) * 100}%, 0% 100%, ${(attackDistribution.R2L / attackDistribution.total) * 50}% 100%)`,
+                              }}
+                            ></div>
+                          )}
+                          {/* U2R Attack */}
+                          {attackDistribution.U2R > 0 && (
+                            <div
+                              className="absolute inset-0 rounded-full border-8 border-green-500/80"
+                              style={{
+                                clipPath: `polygon(50% 50%, ${50 + (attackDistribution.U2R / attackDistribution.total) * 50}% 100%, 100% 100%, 100% ${100 - (attackDistribution.U2R / attackDistribution.total) * 100}%)`,
+                              }}
+                            ></div>
+                          )}
+                          <div className="absolute inset-8 bg-gray-900/80 rounded-full flex items-center justify-center">
+                            <span className="text-white font-bold">{detectionData.attacksDetected}</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {attackDistribution.DOS > 0 && (
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                            <span className="text-gray-300">
+                              DOS ({Math.round((attackDistribution.DOS / attackDistribution.total) * 100)}%)
+                            </span>
+                          </div>
+                        )}
+                        {attackDistribution.Probe > 0 && (
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
+                            <span className="text-gray-300">
+                              Probe ({Math.round((attackDistribution.Probe / attackDistribution.total) * 100)}%)
+                            </span>
+                          </div>
+                        )}
+                        {attackDistribution.R2L > 0 && (
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+                            <span className="text-gray-300">
+                              R2L ({Math.round((attackDistribution.R2L / attackDistribution.total) * 100)}%)
+                            </span>
+                          </div>
+                        )}
+                        {attackDistribution.U2R > 0 && (
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                            <span className="text-gray-300">
+                              U2R ({Math.round((attackDistribution.U2R / attackDistribution.total) * 100)}%)
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center">
-                        <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                        <span className="text-gray-300">DOS (45%)</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
-                        <span className="text-gray-300">Probe (25%)</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                        <span className="text-gray-300">R2L (20%)</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                        <span className="text-gray-300">U2R (10%)</span>
-                      </div>
-                    </div>
-                  </div>
 
-                  <div>
-                    <div className="h-48">
-                      <div className="h-full flex items-end space-x-2">
-                        <div
-                          className="w-1/5 bg-gradient-to-t from-red-500/80 to-red-500/20 rounded-t-md"
-                          style={{ height: "90%" }}
-                        ></div>
-                        <div
-                          className="w-1/5 bg-gradient-to-t from-red-500/80 to-red-500/20 rounded-t-md"
-                          style={{ height: "75%" }}
-                        ></div>
-                        <div
-                          className="w-1/5 bg-gradient-to-t from-yellow-500/80 to-yellow-500/20 rounded-t-md"
-                          style={{ height: "60%" }}
-                        ></div>
-                        <div
-                          className="w-1/5 bg-gradient-to-t from-blue-500/80 to-blue-500/20 rounded-t-md"
-                          style={{ height: "40%" }}
-                        ></div>
-                        <div
-                          className="w-1/5 bg-gradient-to-t from-green-500/80 to-green-500/20 rounded-t-md"
-                          style={{ height: "20%" }}
-                        ></div>
+                    <div>
+                      <div className="h-48">
+                        <div className="h-full flex items-end space-x-2">
+                          {detectionData.results.slice(0, 5).map((result, index) => (
+                            <div
+                              key={index}
+                              className={`w-1/5 rounded-t-md ${
+                                result.attackType === "DOS"
+                                  ? "bg-gradient-to-t from-red-500/80 to-red-500/20"
+                                  : result.attackType === "Probe"
+                                    ? "bg-gradient-to-t from-yellow-500/80 to-yellow-500/20"
+                                    : result.attackType === "R2L"
+                                      ? "bg-gradient-to-t from-blue-500/80 to-blue-500/20"
+                                      : result.attackType === "U2R"
+                                        ? "bg-gradient-to-t from-green-500/80 to-green-500/20"
+                                        : "bg-gradient-to-t from-gray-500/80 to-gray-500/20"
+                              }`}
+                              style={{ height: `${result.confidence * 100}%` }}
+                            ></div>
+                          ))}
+                        </div>
                       </div>
+                      <div className="flex justify-between text-xs text-gray-500 mt-2">
+                        {detectionData.results.slice(0, 5).map((result, index) => (
+                          <span key={index}>{result.timestamp.split(" ")[1].substring(0, 5)}</span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2 text-center">Attack frequency over time</p>
                     </div>
-                    <div className="flex justify-between text-xs text-gray-500 mt-2">
-                      <span>08:23</span>
-                      <span>08:24</span>
-                      <span>08:25</span>
-                      <span>08:26</span>
-                      <span>08:27</span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-2 text-center">Attack frequency over time</p>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </motion.div>
@@ -261,56 +334,77 @@ export default function ResultsSection() {
                     </tr>
                   </thead>
                   <tbody>
-                    {mockResults.attacks.map((attack) => (
-                      <tr key={attack.id} className="border-b border-gray-800/50 hover:bg-gray-900/30">
-                        <td className="py-3 px-4 text-gray-300">{attack.timestamp}</td>
-                        <td className="py-3 px-4 text-gray-300">{attack.protocol}</td>
-                        <td className="py-3 px-4 text-gray-300">{attack.flag}</td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              attack.attackType === "DOS"
-                                ? "bg-red-500/20 text-red-400"
-                                : attack.attackType === "Probe"
-                                  ? "bg-yellow-500/20 text-yellow-400"
-                                  : attack.attackType === "R2L"
-                                    ? "bg-blue-500/20 text-blue-400"
-                                    : "bg-green-500/20 text-green-400"
-                            }`}
-                          >
-                            {attack.attackType}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center">
-                            <div className="w-full bg-gray-800 rounded-full h-1.5 mr-2">
-                              <div
-                                className={`h-1.5 rounded-full ${
-                                  attack.confidence > 0.9
-                                    ? "bg-red-500"
-                                    : attack.confidence > 0.8
-                                      ? "bg-yellow-500"
-                                      : "bg-blue-500"
-                                }`}
-                                style={{ width: `${attack.confidence * 100}%` }}
-                              ></div>
+                    {detectionData.results
+                      .filter((result) => result.attackType !== "normal")
+                      .slice(0, viewAllThreats ? undefined : 5)
+                      .map((attack, index) => (
+                        <tr key={index} className="border-b border-gray-800/50 hover:bg-gray-900/30">
+                          <td className="py-3 px-4 text-gray-300">{attack.timestamp}</td>
+                          <td className="py-3 px-4 text-gray-300">{attack.protocol}</td>
+                          <td className="py-3 px-4 text-gray-300">{attack.flag}</td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                attack.attackType === "DOS"
+                                  ? "bg-red-500/20 text-red-400"
+                                  : attack.attackType === "Probe"
+                                    ? "bg-yellow-500/20 text-yellow-400"
+                                    : attack.attackType === "R2L"
+                                      ? "bg-blue-500/20 text-blue-400"
+                                      : "bg-green-500/20 text-green-400"
+                              }`}
+                            >
+                              {attack.attackType}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center">
+                              <div className="w-full bg-gray-800 rounded-full h-1.5 mr-2">
+                                <div
+                                  className={`h-1.5 rounded-full ${
+                                    attack.confidence > 0.9
+                                      ? "bg-red-500"
+                                      : attack.confidence > 0.8
+                                        ? "bg-yellow-500"
+                                        : "bg-blue-500"
+                                  }`}
+                                  style={{ width: `${attack.confidence * 100}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-gray-300 text-sm">{(attack.confidence * 100).toFixed(0)}%</span>
                             </div>
-                            <span className="text-gray-300 text-sm">{(attack.confidence * 100).toFixed(0)}%</span>
-                          </div>
+                          </td>
+                        </tr>
+                      ))}
+                    {detectionData.results.filter((result) => result.attackType !== "normal").length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-gray-500">
+                          No threats detected in the analyzed data.
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
             </CardContent>
             <CardFooter className="border-t border-gray-800 pt-4 flex justify-between">
               <div className="text-sm text-gray-500">
-                Showing {mockResults.attacks.length} of {mockResults.summary.attacksDetected} threats
+                Showing{" "}
+                {viewAllThreats
+                  ? detectionData.results.filter((result) => result.attackType !== "normal").length
+                  : Math.min(detectionData.results.filter((result) => result.attackType !== "normal").length, 5)}{" "}
+                of {detectionData.attacksDetected} threats
               </div>
-              <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-800">
-                View All
-              </Button>
+              {detectionData.attacksDetected > 5 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                  onClick={() => setViewAllThreats(!viewAllThreats)}
+                >
+                  {viewAllThreats ? "Show Less" : "View All"}
+                </Button>
+              )}
             </CardFooter>
           </Card>
         </motion.div>
@@ -330,39 +424,51 @@ export default function ResultsSection() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {mockResults.recommendations.map((rec) => (
-                  <div key={rec.id} className="p-4 rounded-lg bg-gray-900/50 border border-gray-800">
-                    <div className="flex items-start">
-                      <div
-                        className={`p-2 rounded-full mr-4 ${
-                          rec.attackType === "DOS"
-                            ? "bg-red-500/20"
-                            : rec.attackType === "Probe"
-                              ? "bg-yellow-500/20"
-                              : rec.attackType === "R2L"
-                                ? "bg-blue-500/20"
-                                : "bg-green-500/20"
-                        }`}
-                      >
-                        <AlertTriangle
-                          className={`h-5 w-5 ${
+                {recommendations.length > 0 ? (
+                  recommendations.map((rec, index) => (
+                    <div key={index} className="p-4 rounded-lg bg-gray-900/50 border border-gray-800">
+                      <div className="flex items-start">
+                        <div
+                          className={`p-2 rounded-full mr-4 ${
                             rec.attackType === "DOS"
-                              ? "text-red-400"
+                              ? "bg-red-500/20"
                               : rec.attackType === "Probe"
-                                ? "text-yellow-400"
+                                ? "bg-yellow-500/20"
                                 : rec.attackType === "R2L"
-                                  ? "text-blue-400"
-                                  : "text-green-400"
+                                  ? "bg-blue-500/20"
+                                  : rec.attackType === "U2R"
+                                    ? "bg-green-500/20"
+                                    : "bg-gray-500/20"
                           }`}
-                        />
-                      </div>
-                      <div>
-                        <h4 className="text-white font-medium mb-1">For {rec.attackType} Attacks</h4>
-                        <p className="text-gray-400">{rec.recommendation}</p>
+                        >
+                          <AlertTriangle
+                            className={`h-5 w-5 ${
+                              rec.attackType === "DOS"
+                                ? "text-red-400"
+                                : rec.attackType === "Probe"
+                                  ? "text-yellow-400"
+                                  : rec.attackType === "R2L"
+                                    ? "text-blue-400"
+                                    : rec.attackType === "U2R"
+                                      ? "text-green-400"
+                                      : "text-gray-400"
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <h4 className="text-white font-medium mb-1">
+                            {rec.attackType === "normal" ? "General Security" : `For ${rec.attackType} Attacks`}
+                          </h4>
+                          <p className="text-gray-400">{rec.recommendation}</p>
+                        </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="p-8 text-center text-gray-500">
+                    No specific recommendations available. Continue monitoring your network for potential threats.
                   </div>
-                ))}
+                )}
               </div>
             </CardContent>
             <CardFooter className="border-t border-gray-800 pt-4 flex justify-end space-x-4">
@@ -382,7 +488,10 @@ export default function ResultsSection() {
                 <MessageSquare className="mr-2 h-4 w-4" />
                 Chat with Assistant
               </Button>
-              <Button className="bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(59,130,246,0.5)]">
+              <Button
+                className="bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+                onClick={() => router.push("/")}
+              >
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Run Another Scan
               </Button>

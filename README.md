@@ -1,5 +1,6 @@
 # NopeNet - Intrusion Detection, Reinvented
 
+![NopeNet Logo](public/nopenet-logo.png)
 
 NopeNet is a modern web application for network intrusion detection with an intuitive user interface. It analyzes network data to detect potential threats and attacks, providing detailed visualizations and actionable recommendations.
 
@@ -31,7 +32,7 @@ NopeNet is a modern web application for network intrusion detection with an intu
 
 1. Clone the repository:
    \`\`\`bash
-   git clone https://github.com/CodeByGirum/nope-net-design
+   git clone https://github.com/yourusername/nopenet.git
    cd nopenet
    \`\`\`
 

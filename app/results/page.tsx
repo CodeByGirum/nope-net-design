@@ -1,15 +1,33 @@
 "use client"
+
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import HeroSection from "@/components/hero-section"
+import ResultsSection from "@/components/results-section"
 import Footer from "@/components/footer"
 import FloatingAssistant from "@/components/floating-assistant"
+import { useDetection } from "@/context/detection-context"
 
-export default function Home() {
+export default function ResultsPage() {
   const router = useRouter()
+  const { detectionData } = useDetection()
+  const [isLoaded, setIsLoaded] = useState(false)
 
-  const handleDetectionComplete = () => {
-    // Navigate to results page with a query parameter
-    router.push("/results?detection=completed")
+  // Check if we have detection data or redirect back to home
+  useEffect(() => {
+    if (!detectionData) {
+      // If no detection data, redirect to home
+      router.push("/")
+    } else {
+      setIsLoaded(true)
+    }
+  }, [router, detectionData])
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="animate-pulse text-xl">Loading results...</div>
+      </div>
+    )
   }
 
   return (
@@ -21,7 +39,7 @@ export default function Home() {
           <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-500/10 rounded-full filter blur-3xl"></div>
         </div>
         <div className="relative z-10">
-          <HeroSection onDetectionComplete={handleDetectionComplete} />
+          <ResultsSection />
           <Footer />
         </div>
       </div>
